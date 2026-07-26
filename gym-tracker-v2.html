@@ -198,6 +198,59 @@
   .history-day { font-size: 12px; color: var(--accent); margin-bottom: 8px; }
   .history-ex { font-size: 13px; margin: 4px 0; color: var(--text); }
   .history-ex .ename { color: var(--text-dim); }
+  /* ---- History: calendar + detail ---- */
+  .cal-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 2px 14px; }
+  .cal-title { font-size:16px; font-weight:600; }
+  .cal-nav { background:var(--card); border:1px solid var(--border); color:var(--text); width:38px; height:38px; border-radius:10px; font-size:20px; line-height:1; }
+  .cal-nav:active { background:var(--card2); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+  .cal-dow { text-align:center; font-size:11px; color:var(--text-dim); padding-bottom:2px; }
+  .cal-cell { aspect-ratio:1/1; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:14px; position:relative; border:1px solid transparent; }
+  .cal-cell.empty { visibility:hidden; }
+  .cal-cell.blank { color:var(--text-dim); opacity:0.4; }
+  .cal-cell.today { border-color:var(--text-dim); }
+  .cal-cell.has { font-weight:700; cursor:pointer; }
+  .cal-cell.gym { background:rgba(79,142,247,0.18); color:#d5e4ff; }
+  .cal-cell.home { background:rgba(52,211,153,0.18); color:#cbf6e6; }
+  .cal-cell.has:active { filter:brightness(1.3); }
+  .cal-cardio { position:absolute; top:2px; right:3px; font-size:9px; }
+  .cal-legend { display:flex; gap:16px; justify-content:center; margin:14px 0 4px; font-size:12px; color:var(--text-dim); }
+  .cal-legend span { display:inline-flex; align-items:center; gap:5px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .dot.gym { background:var(--accent); }
+  .dot.home { background:var(--accent2); }
+  .hist-row { display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--border); border-left:3px solid var(--border); border-radius:14px; padding:11px 14px; margin-bottom:8px; cursor:pointer; }
+  .hist-row.gym { border-left-color:var(--accent); }
+  .hist-row.home { border-left-color:var(--accent2); }
+  .hist-row:active { background:var(--card2); }
+  .hist-row-day { text-align:center; min-width:34px; font-size:20px; font-weight:700; line-height:1; }
+  .hist-row-day span { display:block; font-size:10px; color:var(--text-dim); text-transform:uppercase; font-weight:500; margin-top:2px; }
+  .hist-row-main { flex:1; min-width:0; }
+  .hist-row-title { font-size:14px; font-weight:600; }
+  .hist-row-meta { font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .hist-row-arrow { color:var(--text-dim); font-size:22px; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:flex-end; justify-content:center; z-index:50; animation:fadeIn .15s ease; }
+  @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+  .modal { background:var(--card); width:100%; max-width:600px; max-height:86vh; overflow-y:auto; border-radius:20px 20px 0 0; padding:20px 18px 34px; border:1px solid var(--border); }
+  @media (min-width:600px){ .modal-backdrop{align-items:center;} .modal{border-radius:20px;} }
+  .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:4px; }
+  .modal-title { font-size:19px; font-weight:700; }
+  .modal-sub { font-size:13px; color:var(--accent); margin-top:3px; }
+  .modal-close { background:var(--card2); border:none; color:var(--text); width:34px; height:34px; border-radius:10px; font-size:15px; flex-shrink:0; }
+  .badge-row { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 2px; }
+  .badge { font-size:12px; padding:6px 10px; border-radius:10px; background:var(--card2); color:var(--text-dim); }
+  .badge.on { background:rgba(52,211,153,0.15); color:var(--accent2); }
+  .badge.off { opacity:0.55; }
+  .md-ex { background:var(--card2); border-radius:12px; padding:12px; margin-top:10px; }
+  .md-ex-name { font-size:14px; font-weight:600; margin-bottom:8px; }
+  .md-sets { display:flex; flex-wrap:wrap; gap:6px; }
+  .md-set { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:4px 9px; font-size:13px; }
+  .md-set .w { font-weight:700; }
+  .md-set .r { color:var(--text-dim); }
+  .md-empty-ex { color:var(--text-dim); font-size:13px; }
+  .md-note { margin-top:8px; font-size:13px; color:var(--text-dim); border-left:2px solid var(--accent); padding-left:9px; }
+  .md-delete { width:100%; margin-top:18px; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:12px; padding:12px; font-size:14px; }
+  .md-delete:active { background:rgba(248,113,113,0.12); }
   .empty-state {
     text-align: center;
     color: var(--text-dim);
@@ -888,90 +941,186 @@ async function renderWorkoutView() {
   }
 }
 
+function escHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+let historyMonth = null; // Date = first day of the month currently shown in history
+
 async function renderHistoryView() {
   const main = document.getElementById('mainContent');
   document.getElementById('pageTitle').textContent = 'История';
   main.innerHTML = '<div class="empty-state">Загрузка...</div>';
 
-  let keys = [];
+  // Collect all saved workouts keyed by date.
+  const saved = {};
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('workout:')) keys.push(k);
+      if (k && k.startsWith('workout:')) {
+        const e = await loadEntry(k.slice('workout:'.length));
+        if (e && e.saved) saved[e.date] = e;
+      }
     }
-  } catch (e) {
-    keys = [];
-  }
+  } catch (e) {}
 
-  if (keys.length === 0) {
+  const dates = Object.keys(saved).sort();
+  if (dates.length === 0) {
     main.innerHTML = '<div class="empty-state">Пока нет записей.<br>Заполни тренировку — она появится здесь.</div>';
     return;
   }
 
-  const dates = keys.map(k => k.replace('workout:', '')).sort().reverse();
-  main.innerHTML = '';
+  // Default to the month of the most recent workout.
+  if (!historyMonth) {
+    const d = new Date(dates[dates.length - 1] + 'T12:00:00');
+    historyMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+  }
 
-  for (const dateStr of dates) {
-    const entry = await loadEntry(dateStr);
-    if (!entry.saved) continue;
+  drawHistory(main, saved);
+}
 
-    const el = document.createElement('div');
-    el.className = 'history-entry';
-    const template = PROGRAM[entry.dayKey];
-    let exHtml = '';
-    entry.exercises.forEach(ex => {
-      if (ex.sets.length === 0 && !ex.done) return;
-      const setsStr = ex.sets.filter(s => s.weight || s.reps)
-        .map(s => `${s.weight || '-'}кг×${s.reps || '-'}`).join(', ');
-      exHtml += `<div class="history-ex"><span class="ename">${ex.done ? '✓ ' : ''}${ex.name}:</span> ${setsStr || '—'}</div>`;
-    });
-    const dailyBits = [];
-    if (entry.chinTucks) dailyBits.push('Chin tucks');
-    const kegelCount = [entry.kegelMorning, entry.kegelAfternoon, entry.kegelEvening].filter(Boolean).length;
-    if (kegelCount > 0) dailyBits.push(`Кегель ${kegelCount}/3`);
-    const dailyHtml = dailyBits.length ? `<div class="history-ex" style="color:var(--accent2);">${dailyBits.join(' · ')}</div>` : '';
+function drawHistory(main, saved) {
+  const year = historyMonth.getFullYear();
+  const month = historyMonth.getMonth();
+  const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const dow = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const startOffset = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0, 10);
 
-    el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div>
-          <div class="history-date">${formatDateHuman(dateStr)}</div>
-          <div class="history-day">${template.type}${entry.cardio ? ' + кардио' : ''}</div>
+  let cells = '';
+  for (let i = 0; i < startOffset; i++) cells += '<div class="cal-cell empty"></div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const today = ds === todayStr ? ' today' : '';
+    const entry = saved[ds];
+    if (entry) {
+      const loc = (PROGRAM[entry.dayKey] && PROGRAM[entry.dayKey].location) || 'gym';
+      const cardio = entry.cardio ? '<span class="cal-cardio">🏃</span>' : '';
+      cells += `<div class="cal-cell has ${loc}${today}" data-date="${ds}">${day}${cardio}</div>`;
+    } else {
+      cells += `<div class="cal-cell blank${today}">${day}</div>`;
+    }
+  }
+
+  // Month workout list (newest first).
+  const monthWorkouts = Object.keys(saved).filter(d => {
+    const dt = new Date(d + 'T12:00:00');
+    return dt.getFullYear() === year && dt.getMonth() === month;
+  }).sort().reverse();
+
+  let listHtml = '';
+  for (const ds of monthWorkouts) {
+    const e = saved[ds];
+    const tpl = PROGRAM[e.dayKey] || { type: 'Тренировка', location: 'gym' };
+    const exCount = e.exercises.filter(x => x.sets.some(s => s.weight || s.reps) || x.done).length;
+    const setCount = e.exercises.reduce((n, x) => n + x.sets.filter(s => s.weight || s.reps).length, 0);
+    const d = new Date(ds + 'T12:00:00');
+    listHtml += `
+      <div class="hist-row ${tpl.location}" data-date="${ds}">
+        <div class="hist-row-day">${d.getDate()}<span>${dow[(d.getDay() + 6) % 7]}</span></div>
+        <div class="hist-row-main">
+          <div class="hist-row-title">${tpl.type}</div>
+          <div class="hist-row-meta">${exCount} упр · ${setCount} подх${e.cardio ? ' · 🏃 кардио' : ''}</div>
         </div>
-        <button class="history-delete-btn" data-date="${dateStr}">🗑</button>
-      </div>
-      ${exHtml}
-      ${dailyHtml}
-    `;
-    el.querySelector('.history-delete-btn').onclick = async (ev) => {
-      ev.stopPropagation();
-      const btn = ev.currentTarget;
-      if (btn.dataset.confirming === 'true') {
-        try {
-          localStorage.removeItem(`workout:${dateStr}`);
-          delete cache[dateStr];
-          markDeleted(dateStr);
-          schedulePush();
-        } catch (e) {}
-        renderHistoryView();
-      } else {
-        btn.dataset.confirming = 'true';
-        btn.textContent = '✓ Точно?';
-        btn.style.color = 'var(--danger)';
-        setTimeout(() => {
-          if (btn.dataset.confirming === 'true') {
-            btn.dataset.confirming = 'false';
-            btn.textContent = '🗑';
-            btn.style.color = '';
-          }
-        }, 3000);
-      }
-    };
-    main.appendChild(el);
+        <div class="hist-row-arrow">›</div>
+      </div>`;
   }
 
-  if (main.innerHTML === '') {
-    main.innerHTML = '<div class="empty-state">Пока нет записей.<br>Заполни тренировку — она появится здесь.</div>';
-  }
+  main.innerHTML = `
+    <div class="cal-header">
+      <button class="cal-nav" id="calPrev">‹</button>
+      <div class="cal-title">${monthNames[month]} ${year}</div>
+      <button class="cal-nav" id="calNext">›</button>
+    </div>
+    <div class="cal-grid">
+      ${dow.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+    <div class="cal-legend">
+      <span><i class="dot gym"></i>Зал</span>
+      <span><i class="dot home"></i>Дома</span>
+      <span>🏃 кардио</span>
+    </div>
+    <div class="section-title">Тренировки за месяц</div>
+    <div id="histList">${listHtml || '<div class="empty-state" style="padding:24px;">В этом месяце нет тренировок</div>'}</div>
+  `;
+
+  document.getElementById('calPrev').onclick = () => { historyMonth = new Date(year, month - 1, 1); renderHistoryView(); };
+  document.getElementById('calNext').onclick = () => { historyMonth = new Date(year, month + 1, 1); renderHistoryView(); };
+  main.querySelectorAll('[data-date]').forEach(el => {
+    el.onclick = () => openWorkoutDetail(el.dataset.date);
+  });
+}
+
+async function openWorkoutDetail(dateStr) {
+  const entry = await loadEntry(dateStr);
+  if (!entry) return;
+  const tpl = PROGRAM[entry.dayKey] || { type: 'Тренировка', note: '' };
+  const kegelCount = [entry.kegelMorning, entry.kegelAfternoon, entry.kegelEvening].filter(Boolean).length;
+
+  let exHtml = '';
+  entry.exercises.forEach(ex => {
+    const realSets = ex.sets.filter(s => s.weight || s.reps);
+    if (realSets.length === 0 && !ex.done && !ex.notes) return;
+    const setsHtml = realSets.length
+      ? `<div class="md-sets">${realSets.map(s => `<span class="md-set"><span class="w">${escHtml(s.weight || '—')}</span><span class="r"> кг × ${escHtml(s.reps || '—')}</span></span>`).join('')}</div>`
+      : `<div class="md-empty-ex">${ex.done ? '✓ отмечено выполненным' : 'без подходов'}</div>`;
+    const note = ex.notes ? `<div class="md-note">📝 ${escHtml(ex.notes)}</div>` : '';
+    exHtml += `<div class="md-ex"><div class="md-ex-name">${ex.done ? '✓ ' : ''}${escHtml(ex.name)}</div>${setsHtml}${note}</div>`;
+  });
+  if (!exHtml) exHtml = '<div class="md-empty-ex" style="margin-top:12px;">Упражнения не заполнены</div>';
+
+  const badges = `
+    <div class="badge-row">
+      <span class="badge ${entry.cardio ? 'on' : 'off'}">🏃 Кардио ${entry.cardio ? '✓' : '—'}</span>
+      <span class="badge ${entry.chinTucks ? 'on' : 'off'}">Chin tucks ${entry.chinTucks ? '✓' : '—'}</span>
+      <span class="badge ${kegelCount > 0 ? 'on' : 'off'}">Кегель ${kegelCount}/3</span>
+    </div>`;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">${formatDateHuman(dateStr)}</div>
+          <div class="modal-sub">${escHtml(tpl.type)}${tpl.note ? ' · ' + escHtml(tpl.note) : ''}</div>
+        </div>
+        <button class="modal-close">✕</button>
+      </div>
+      ${badges}
+      ${exHtml}
+      <button class="md-delete">🗑 Удалить тренировку</button>
+    </div>`;
+  document.body.appendChild(backdrop);
+
+  const close = () => backdrop.remove();
+  backdrop.onclick = (ev) => { if (ev.target === backdrop) close(); };
+  backdrop.querySelector('.modal-close').onclick = close;
+
+  const delBtn = backdrop.querySelector('.md-delete');
+  delBtn.onclick = () => {
+    if (delBtn.dataset.confirming === 'true') {
+      try {
+        localStorage.removeItem(`workout:${dateStr}`);
+        delete cache[dateStr];
+        markDeleted(dateStr);
+        schedulePush();
+      } catch (e) {}
+      close();
+      renderHistoryView();
+    } else {
+      delBtn.dataset.confirming = 'true';
+      delBtn.textContent = '✓ Точно удалить?';
+      setTimeout(() => {
+        if (delBtn.dataset.confirming === 'true') {
+          delBtn.dataset.confirming = 'false';
+          delBtn.textContent = '🗑 Удалить тренировку';
+        }
+      }, 3000);
+    }
+  };
 }
 
 async function renderWeightView() {
@@ -1342,6 +1491,7 @@ async function backgroundSync() {
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
     currentView = btn.dataset.view;
+    if (currentView === 'history') historyMonth = null; // open on latest month
     render();          // instant paint from local data
     backgroundSync();  // then pull fresh cloud data and re-render if safe
   };
