@@ -1322,12 +1322,29 @@ document.getElementById('dateInput').onchange = (e) => {
   render();
 };
 
+// Re-pull from the cloud, then refresh the current view. Avoids yanking
+// the UI out from under active typing on the workout tab.
+async function backgroundSync() {
+  const ok = await pullFromCloud();
+  if (!ok) return;
+  const editing = document.activeElement &&
+    ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  if (currentView !== 'workout' || !editing) render();
+}
+
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
     currentView = btn.dataset.view;
-    render();
+    render();          // instant paint from local data
+    backgroundSync();  // then pull fresh cloud data and re-render if needed
   };
 });
+
+// Refresh when returning to the app (switching back from another device/tab).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') backgroundSync();
+});
+window.addEventListener('focus', backgroundSync);
 
 (async () => {
   await pullFromCloud();   // fetch + merge cloud data before first paint
