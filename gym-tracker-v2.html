@@ -848,6 +848,7 @@ async function renderWorkoutView() {
   `;
   main.appendChild(saveDiv);
   document.getElementById('saveWorkoutBtn').onclick = async () => {
+    cache[currentDate] = entry;   // re-assert the edited entry in case a sync cleared the cache
     entry.saved = !entry.saved;
     await saveEntry(currentDate);
     renderWorkoutView();
@@ -1322,21 +1323,27 @@ document.getElementById('dateInput').onchange = (e) => {
   render();
 };
 
-// Re-pull from the cloud, then refresh the current view. Avoids yanking
-// the UI out from under active typing on the workout tab.
+// Timestamp of the user's last keystroke anywhere in the app. A cloud pull
+// replaces the in-memory entry, so we must never do it mid-edit or the
+// unsaved values get thrown away.
+let lastEditAt = 0;
+document.addEventListener('input', () => { lastEditAt = Date.now(); }, true);
+
+// Re-pull from the cloud, then refresh the current view — but only when the
+// user is NOT entering data, so we don't clobber unsaved edits.
 async function backgroundSync() {
-  const ok = await pullFromCloud();
-  if (!ok) return;
   const editing = document.activeElement &&
     ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
-  if (currentView !== 'workout' || !editing) render();
+  if (editing || Date.now() - lastEditAt < 4000) return;
+  const ok = await pullFromCloud();
+  if (ok) render();
 }
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
     currentView = btn.dataset.view;
     render();          // instant paint from local data
-    backgroundSync();  // then pull fresh cloud data and re-render if needed
+    backgroundSync();  // then pull fresh cloud data and re-render if safe
   };
 });
 
@@ -1344,7 +1351,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') backgroundSync();
 });
-window.addEventListener('focus', backgroundSync);
 
 (async () => {
   await pullFromCloud();   // fetch + merge cloud data before first paint
