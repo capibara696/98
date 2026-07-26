@@ -35,6 +35,17 @@
     border-bottom: 1px solid var(--border);
   }
   h1 { font-size: 20px; margin: 0 0 4px; }
+  .sync-status {
+    position: absolute;
+    top: 18px;
+    right: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: color .2s;
+  }
+  .sync-status.ok { color: var(--accent2); }
+  .sync-status.err { color: var(--danger); }
+  .sync-status.syncing { color: var(--accent); }
   .date-row {
     display: flex;
     align-items: center;
@@ -306,6 +317,7 @@
 
 <header>
   <h1 id="pageTitle">Тренировка</h1>
+  <span id="syncStatus" class="sync-status"></span>
   <div class="date-row" id="dateRow">
     <input type="date" id="dateInput">
   </div>
@@ -452,6 +464,173 @@ let currentGroup = PROGRAM[currentDayKey].location; // "gym" or "home"
 let cache = {}; // in-memory cache of loaded workout entries by date
 let cardioCache = {}; // date -> bool
 
+/* ---------------- Cloud sync (JSONBin.io) ----------------
+   Local storage stays the fast, offline-first source of truth.
+   On top of it we keep one JSONBin "bin" that mirrors the full
+   local state so data is shared across devices. Merge is
+   newest-wins per record, with tombstones for deletions. */
+const JSONBIN_BIN_ID = '6a663a6dda38895dfe929fb0';
+const JSONBIN_API_KEY = '$2a$10$wML42Whm9PTySaI27gM/SO3xEujr2zJkt/A7H8NksvT6qaIGDeEmm';
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
+const TOMBSTONE_KEY = 'deleted-workouts'; // { "YYYY-MM-DD": deletedAtTs }
+
+function readJSON(key, fallback) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key));
+    return (v === null || v === undefined) ? fallback : v;
+  } catch (e) { return fallback; }
+}
+
+function setSyncStatus(text, cls) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'sync-status' + (cls ? ' ' + cls : '');
+}
+
+// Full snapshot of everything stored locally.
+function collectLocalState() {
+  const workouts = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('workout:')) {
+      const entry = readJSON(k, null);
+      if (entry) workouts[k.slice('workout:'.length)] = entry;
+    }
+  }
+  return {
+    _savedAt: Date.now(),
+    workouts,
+    bodyweight: readJSON('bodyweight-log', {}),
+    deleted: readJSON(TOMBSTONE_KEY, {})
+  };
+}
+
+// Write a (merged) snapshot back into localStorage.
+function applyState(state) {
+  if (!state || typeof state !== 'object') return;
+  const deleted = state.deleted || {};
+  if (state.workouts) {
+    for (const [date, entry] of Object.entries(state.workouts)) {
+      localStorage.setItem('workout:' + date, JSON.stringify(entry));
+    }
+  }
+  for (const date of Object.keys(deleted)) {
+    localStorage.removeItem('workout:' + date);
+  }
+  if (state.bodyweight) localStorage.setItem('bodyweight-log', JSON.stringify(state.bodyweight));
+  localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(deleted));
+  cache = {}; // in-memory cache is stale after a merge
+}
+
+// Merge two snapshots without losing data. Newest-wins per record.
+function mergeStates(local, remote) {
+  if (!remote) return local;
+  if (!local) return remote;
+
+  // Tombstones: keep the newest deletion time per date.
+  const deleted = {};
+  for (const src of [local.deleted || {}, remote.deleted || {}]) {
+    for (const [d, ts] of Object.entries(src)) {
+      deleted[d] = Math.max(deleted[d] || 0, ts || 0);
+    }
+  }
+
+  // Workouts: union of dates, newest _ts wins; a later deletion removes it.
+  const workouts = {};
+  const dates = new Set([...Object.keys(local.workouts || {}), ...Object.keys(remote.workouts || {})]);
+  for (const d of dates) {
+    const a = (local.workouts || {})[d];
+    const b = (remote.workouts || {})[d];
+    const chosen = !a ? b : !b ? a : ((a._ts || 0) >= (b._ts || 0) ? a : b);
+    const delTs = deleted[d] || 0;
+    if (delTs && delTs >= (chosen._ts || 0)) continue; // deletion is newer
+    workouts[d] = chosen;
+  }
+
+  // Bodyweight: merge keys; on conflict the newer snapshot wins.
+  const localNewer = (local._savedAt || 0) >= (remote._savedAt || 0);
+  const bodyweight = localNewer
+    ? { ...(remote.bodyweight || {}), ...(local.bodyweight || {}) }
+    : { ...(local.bodyweight || {}), ...(remote.bodyweight || {}) };
+
+  return {
+    _savedAt: Math.max(local._savedAt || 0, remote._savedAt || 0),
+    workouts, bodyweight, deleted
+  };
+}
+
+// Pull remote, merge into local. Pushes back if the merge added anything.
+async function pullFromCloud() {
+  setSyncStatus('↕ синхронизация…', 'syncing');
+  try {
+    const res = await fetch(JSONBIN_URL + '/latest', {
+      headers: { 'X-Master-Key': JSONBIN_API_KEY }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const body = await res.json();
+    const rec = body.record;
+    const remote = (rec && (rec.workouts || rec.bodyweight || rec.deleted)) ? rec : null;
+    const local = collectLocalState();
+    const merged = mergeStates(local, remote);
+    applyState(merged);
+
+    const mergedSnap = JSON.stringify({ w: merged.workouts, b: merged.bodyweight, d: merged.deleted });
+    const remoteSnap = remote
+      ? JSON.stringify({ w: remote.workouts || {}, b: remote.bodyweight || {}, d: remote.deleted || {} })
+      : null;
+    if (mergedSnap !== remoteSnap) schedulePush(); // remote is missing local data
+
+    setSyncStatus('☁ синхронизировано', 'ok');
+    return true;
+  } catch (e) {
+    console.error('Cloud pull failed', e);
+    setSyncStatus('⚠ офлайн', 'err');
+    return false;
+  }
+}
+
+// Push the full local snapshot to the cloud (debounced via schedulePush).
+let pushInFlight = false;
+let pushQueued = false;
+async function pushToCloud() {
+  if (pushInFlight) { pushQueued = true; return; }
+  pushInFlight = true;
+  setSyncStatus('↕ синхронизация…', 'syncing');
+  try {
+    const res = await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': JSONBIN_API_KEY
+      },
+      body: JSON.stringify(collectLocalState())
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    setSyncStatus('☁ синхронизировано', 'ok');
+  } catch (e) {
+    console.error('Cloud push failed', e);
+    setSyncStatus('⚠ не сохранено в облако', 'err');
+  } finally {
+    pushInFlight = false;
+    if (pushQueued) { pushQueued = false; schedulePush(); }
+  }
+}
+const schedulePush = debounce(pushToCloud, 1200);
+
+function markDeleted(dateStr) {
+  const tomb = readJSON(TOMBSTONE_KEY, {});
+  tomb[dateStr] = Date.now();
+  localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(tomb));
+}
+function clearTombstone(dateStr) {
+  const tomb = readJSON(TOMBSTONE_KEY, {});
+  if (tomb[dateStr]) {
+    delete tomb[dateStr];
+    localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(tomb));
+  }
+}
+
 function getDayKeyFromDate(dateStr) {
   const d = new Date(dateStr + "T12:00:00");
   const jsDay = d.getDay(); // 0=sun
@@ -517,8 +696,11 @@ async function saveEntry(dateStr) {
   const entry = cache[dateStr];
   if (!entry) return;
   try {
+    entry._ts = Date.now();
     localStorage.setItem(`workout:${dateStr}`, JSON.stringify(entry));
+    clearTombstone(dateStr);
     showToast();
+    schedulePush();
   } catch (e) {
     console.error("Save failed", e);
   }
@@ -766,6 +948,8 @@ async function renderHistoryView() {
         try {
           localStorage.removeItem(`workout:${dateStr}`);
           delete cache[dateStr];
+          markDeleted(dateStr);
+          schedulePush();
         } catch (e) {}
         renderHistoryView();
       } else {
@@ -818,6 +1002,7 @@ async function renderWeightView() {
     log[currentDate] = e.target.value;
     localStorage.setItem('bodyweight-log', JSON.stringify(log));
     showToast();
+    schedulePush();
     renderBwHistory();
   }, 500);
 
@@ -1144,7 +1329,10 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   };
 });
 
-render();
+(async () => {
+  await pullFromCloud();   // fetch + merge cloud data before first paint
+  render();
+})();
 </script>
 </body>
 </html>
