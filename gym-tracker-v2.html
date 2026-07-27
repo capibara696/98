@@ -249,7 +249,9 @@
   .md-set .r { color:var(--text-dim); }
   .md-empty-ex { color:var(--text-dim); font-size:13px; }
   .md-note { margin-top:8px; font-size:13px; color:var(--text-dim); border-left:2px solid var(--accent); padding-left:9px; }
-  .md-delete { width:100%; margin-top:18px; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:12px; padding:12px; font-size:14px; }
+  .md-edit { width:100%; margin-top:18px; background:var(--accent); color:#fff; border:none; border-radius:12px; padding:12px; font-size:14px; font-weight:600; }
+  .md-edit:active { filter:brightness(1.12); }
+  .md-delete { width:100%; margin-top:10px; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:12px; padding:12px; font-size:14px; }
   .md-delete:active { background:rgba(248,113,113,0.12); }
   .empty-state {
     text-align: center;
@@ -923,7 +925,7 @@ async function renderWorkoutView() {
       BD Routine${entry.bdRoutine ? ' ✓' : ''}
     </div>
     <div class="bd-status ${bdStatusClass}">${bdStatusText}${bdLocked ? ' · достигнут максимум' : ''}</div>
-    <div class="wc-item ${entry.chinTucks ? 'on' : ''}" data-key="chinTucks" style="flex-basis:100%;">Chin tucks 3×10</div>
+    <div class="wc-item ${entry.chinTucks ? 'on' : ''}" data-key="chinTucks" style="flex-basis:100%;">Chin tucks · 3 подхода до отказа</div>
   `;
   if (!kegelPaused) {
     dailyItems += `
@@ -1158,6 +1160,7 @@ async function openWorkoutDetail(dateStr) {
       </div>
       ${badges}
       ${exHtml}
+      <button class="md-edit">✏️ Редактировать тренировку</button>
       <button class="md-delete">🗑 Удалить тренировку</button>
     </div>`;
   document.body.appendChild(backdrop);
@@ -1165,6 +1168,18 @@ async function openWorkoutDetail(dateStr) {
   const close = () => backdrop.remove();
   backdrop.onclick = (ev) => { if (ev.target === backdrop) close(); };
   backdrop.querySelector('.modal-close').onclick = close;
+
+  backdrop.querySelector('.md-edit').onclick = () => {
+    close();
+    currentView = 'workout';
+    currentDate = dateStr;
+    currentDayKey = getDayKeyFromDate(dateStr);
+    currentGroup = PROGRAM[currentDayKey].location;
+    const di = document.getElementById('dateInput');
+    if (di) di.value = dateStr;
+    render();
+    window.scrollTo(0, 0);
+  };
 
   const delBtn = backdrop.querySelector('.md-delete');
   delBtn.onclick = () => {
