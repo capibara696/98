@@ -299,6 +299,13 @@
     justify-content: center;
   }
   .wc-item.on { background: rgba(52,211,153,0.15); border-color: var(--accent2); color: var(--accent2); }
+  .wc-item.bd-item { border-color: var(--accent); }
+  .wc-item.bd-item.on { background: rgba(79,142,247,0.15); border-color: var(--accent); color: var(--accent); }
+  .wc-item.locked { opacity: 0.4; }
+  .bd-status { flex-basis: 100%; font-size: 12px; margin: -2px 2px 4px; }
+  .bd-status.bd-ok { color: var(--accent2); }
+  .bd-status.bd-failed { color: var(--danger); }
+  .bd-status.bd-progress { color: var(--text-dim); }
   .cardio-toggle {
     background: var(--card);
     border: 1px solid var(--border);
@@ -705,6 +712,37 @@ function isBeforeCutoff(dateStr) {
   return dateStr < CUTOFF_MONDAY;
 }
 
+const BD_MIN = 4, BD_MAX = 6;
+
+// Monday..Sunday date strings of the week containing dateStr.
+function getWeekDates(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const offset = (d.getDay() + 6) % 7; // days since Monday
+  const mon = new Date(d); mon.setDate(d.getDate() - offset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const x = new Date(mon); x.setDate(mon.getDate() + i);
+    return x.toISOString().slice(0, 10);
+  });
+}
+
+// BD Routine stats for the week containing dateStr.
+// status: 'ok' (>= BD_MIN), 'progress' (can still reach BD_MIN), 'failed' (can't).
+async function getBdWeekStats(dateStr) {
+  const week = getWeekDates(dateStr);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let count = 0, reachable = 0;
+  for (const ds of week) {
+    const e = await loadEntry(ds);
+    if (e && e.bdRoutine) count++;
+    else if (ds >= todayStr) reachable++; // a still-open day this week
+  }
+  let status;
+  if (count >= BD_MIN) status = 'ok';
+  else if (count + reachable >= BD_MIN) status = 'progress';
+  else status = 'failed';
+  return { count, reachable, status };
+}
+
 function formatDateHuman(dateStr) {
   const d = new Date(dateStr + "T12:00:00");
   const months = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
@@ -727,6 +765,7 @@ async function loadEntry(dateStr) {
     date: dateStr,
     dayKey: dayKey,
     cardio: false,
+    bdRoutine: false,
     chinTucks: false,
     kegelMorning: false,
     kegelAfternoon: false,
@@ -779,16 +818,15 @@ async function renderWorkoutView() {
   const template = PROGRAM[currentDayKey];
   document.getElementById('pageTitle').textContent = template.type;
   const entry = await loadEntry(currentDate);
-  const pausedThisWeek = isBeforeCutoff(currentDate);
+  const kegelPaused = isBeforeCutoff(currentDate); // kegel starts next week
 
   main.innerHTML = `<div class="day-note">${template.note}</div>`;
-  if (pausedThisWeek) {
-    main.innerHTML += `<div class="day-note" style="color:var(--accent);">⏸ Шея, chin tucks и кегель на этой неделе на паузе — вернутся с понедельника (${formatDateHuman(CUTOFF_MONDAY)})</div>`;
+  if (kegelPaused) {
+    main.innerHTML += `<div class="day-note" style="color:var(--accent);">⏸ Кегель на этой неделе на паузе — начнётся с понедельника (${formatDateHuman(CUTOFF_MONDAY)})</div>`;
   }
 
   entry.exercises.forEach((ex, exIdx) => {
     const meta = template.exercises[exIdx];
-    if (pausedThisWeek && meta && meta.muscle === 'neck') return; // skip neck exercises this week
 
     const card = document.createElement('div');
     card.className = 'exercise-card';
@@ -862,34 +900,62 @@ async function renderWorkoutView() {
     };
   }
 
-  // Daily block: chin tucks + kegel (every day, regardless of location) — paused until cutoff Monday
-  if (!pausedThisWeek) {
+  // Daily block: BD Routine + chin tucks (every day); kegel from next week.
+  const bd = await getBdWeekStats(currentDate);
+  const bdLocked = !entry.bdRoutine && bd.count >= BD_MAX; // block the 7th
+  let bdStatusText, bdStatusClass;
+  if (bd.count >= BD_MAX) {
+    bdStatusText = `✓ максимум · ${bd.count}/${BD_MAX} за неделю`;
+    bdStatusClass = 'bd-ok';
+  } else if (bd.status === 'ok') {
+    bdStatusText = `✓ норма · ${bd.count}/нед (мин ${BD_MIN})`;
+    bdStatusClass = 'bd-ok';
+  } else if (bd.status === 'failed') {
+    bdStatusText = `✕ провалено · ${bd.count}/${BD_MIN} за неделю`;
+    bdStatusClass = 'bd-failed';
+  } else {
+    bdStatusText = `${bd.count}/нед · нужно ещё ${BD_MIN - bd.count} до минимума`;
+    bdStatusClass = 'bd-progress';
+  }
+
+  let dailyItems = `
+    <div class="wc-item bd-item ${entry.bdRoutine ? 'on' : ''} ${bdLocked ? 'locked' : ''}" data-key="bdRoutine" style="flex-basis:100%;">
+      BD Routine${entry.bdRoutine ? ' ✓' : ''}
+    </div>
+    <div class="bd-status ${bdStatusClass}">${bdStatusText}${bdLocked ? ' · достигнут максимум' : ''}</div>
+    <div class="wc-item ${entry.chinTucks ? 'on' : ''}" data-key="chinTucks" style="flex-basis:100%;">Chin tucks 3×10</div>
+  `;
+  if (!kegelPaused) {
+    dailyItems += `
+      <div class="wc-item ${entry.kegelMorning ? 'on' : ''}" data-key="kegelMorning">Кегель — утро</div>
+      <div class="wc-item ${entry.kegelAfternoon ? 'on' : ''}" data-key="kegelAfternoon">Кегель — день</div>
+      <div class="wc-item ${entry.kegelEvening ? 'on' : ''}" data-key="kegelEvening">Кегель — вечер</div>
+    `;
+  }
+
   const dailyBlock = document.createElement('div');
   dailyBlock.className = 'exercise-card';
   dailyBlock.innerHTML = `
     <div class="exercise-head" style="margin-bottom:12px;">
       <div>
         <div class="exercise-name">📌 Каждый день</div>
-        <div class="exercise-target">Chin tucks + Кегель</div>
+        <div class="exercise-target">BD Routine · Chin tucks${!kegelPaused ? ' · Кегель' : ''}</div>
       </div>
     </div>
     <div class="weekly-check" id="dailyChecks">
-      <div class="wc-item ${entry.chinTucks ? 'on' : ''}" data-key="chinTucks">Chin tucks 3×10</div>
-      <div class="wc-item ${entry.kegelMorning ? 'on' : ''}" data-key="kegelMorning">Кегель — утро</div>
-      <div class="wc-item ${entry.kegelAfternoon ? 'on' : ''}" data-key="kegelAfternoon">Кегель — день</div>
-      <div class="wc-item ${entry.kegelEvening ? 'on' : ''}" data-key="kegelEvening">Кегель — вечер</div>
+      ${dailyItems}
     </div>
   `;
   main.appendChild(dailyBlock);
   dailyBlock.querySelectorAll('.wc-item').forEach(item => {
     item.onclick = () => {
       const key = item.dataset.key;
+      if (key === 'bdRoutine' && !entry.bdRoutine && bd.count >= BD_MAX) return; // can't do 7th
       entry[key] = !entry[key];
       debouncedSave(currentDate);
       renderWorkoutView();
     };
   });
-  } // end pausedThisWeek check
 
   // Save-to-history button
   const saveDiv = document.createElement('div');
@@ -1074,6 +1140,7 @@ async function openWorkoutDetail(dateStr) {
   const badges = `
     <div class="badge-row">
       <span class="badge ${entry.cardio ? 'on' : 'off'}">🏃 Кардио ${entry.cardio ? '✓' : '—'}</span>
+      <span class="badge ${entry.bdRoutine ? 'on' : 'off'}">BD Routine ${entry.bdRoutine ? '✓' : '—'}</span>
       <span class="badge ${entry.chinTucks ? 'on' : 'off'}">Chin tucks ${entry.chinTucks ? '✓' : '—'}</span>
       <span class="badge ${kegelCount > 0 ? 'on' : 'off'}">Кегель ${kegelCount}/3</span>
     </div>`;
