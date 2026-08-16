@@ -313,6 +313,11 @@
     background: rgba(79,142,247,0.15);
     border-color: var(--accent);
     font-weight: 600;
+  }  .history-ex-block {
+    margin-bottom: 10px;
+  }
+  .history-notes {
+    margin-top: 4px;
   }
 </style>
 </head>
@@ -862,11 +867,16 @@ async function renderHistoryView() {
       const doneCount = entry.exercises.filter(ex => ex.done || ex.sets.length > 0).length;
 
       let exHtml = '';
-      entry.exercises.forEach(ex => {
+      entry.exercises.forEach((ex, exIdx) => {
         if (ex.sets.length === 0 && !ex.done) return;
         const setsStr = ex.sets.filter(s => s.weight || s.reps)
           .map(s => `${s.weight || '-'}кг×${s.reps || '-'}`).join(', ');
-        exHtml += `<div class="history-ex"><span class="ename">${ex.done ? '✓ ' : ''}${ex.name}:</span> ${setsStr || '—'}</div>`;
+        exHtml += `
+          <div class="history-ex-block" data-exidx="${exIdx}">
+            <div class="history-ex"><span class="ename">${ex.done ? '✓ ' : ''}${ex.name}:</span> ${setsStr || '—'}</div>
+            <textarea class="exercise-notes history-notes" placeholder="Примечание..." rows="1" data-exidx="${exIdx}">${ex.notes || ''}</textarea>
+          </div>
+        `;
       });
       const detailsHtml = `${exHtml}${entry.chinTucks ? '<div class="history-ex" style="color:var(--accent2);">Chin tucks ✓</div>' : ''}`;
 
@@ -892,6 +902,19 @@ async function renderHistoryView() {
         const isOpen = details.style.display !== 'none';
         details.style.display = isOpen ? 'none' : 'block';
         icon.textContent = isOpen ? '▾' : '▴';
+      });
+
+      details.querySelectorAll('.history-notes').forEach(area => {
+        area.addEventListener('click', (ev) => ev.stopPropagation());
+        area.oninput = debounce((e) => {
+          const exIdx = parseInt(e.target.dataset.exidx, 10);
+          entry.exercises[exIdx].notes = e.target.value;
+          allData.workouts[dateStr] = entry;
+          saveLocalBackup();
+          schedulePush();
+          e.target.style.height = 'auto';
+          e.target.style.height = e.target.scrollHeight + 'px';
+        }, 500);
       });
 
       el.querySelector('.history-delete-btn').onclick = async (ev) => {
