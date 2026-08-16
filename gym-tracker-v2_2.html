@@ -828,61 +828,109 @@ async function renderHistoryView() {
     return;
   }
 
-  main.innerHTML = '';
-
-  for (const dateStr of dates) {
-    const entry = await loadEntry(dateStr);
-    if (!entry.saved) continue;
-
-    const el = document.createElement('div');
-    el.className = 'history-entry';
-    const template = PROGRAM[entry.dayKey];
-    let exHtml = '';
-    entry.exercises.forEach(ex => {
-      if (ex.sets.length === 0 && !ex.done) return;
-      const setsStr = ex.sets.filter(s => s.weight || s.reps)
-        .map(s => `${s.weight || '-'}кг×${s.reps || '-'}`).join(', ');
-      exHtml += `<div class="history-ex"><span class="ename">${ex.done ? '✓ ' : ''}${ex.name}:</span> ${setsStr || '—'}</div>`;
-    });
-    el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div>
-          <div class="history-date">${formatDateHuman(dateStr)}</div>
-          <div class="history-day">${template.type}</div>
-        </div>
-        <button class="history-delete-btn" data-date="${dateStr}">🗑</button>
+  main.innerHTML = `
+    <div class="weight-input-row" style="margin-bottom:12px;">
+      <div style="flex:1;">
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px;">Фильтр по дате</div>
+        <input type="date" id="historyDateFilter" />
       </div>
-      ${exHtml}
-      ${entry.chinTucks ? '<div class="history-ex" style="color:var(--accent2);">Chin tucks ✓</div>' : ''}
-    `;
-    el.querySelector('.history-delete-btn').onclick = async (ev) => {
-      ev.stopPropagation();
-      const btn = ev.currentTarget;
-      if (btn.dataset.confirming === 'true') {
-        delete allData.workouts[dateStr];
-        delete cache[dateStr];
-        saveLocalBackup();
-        schedulePush();
-        renderHistoryView();
-      } else {
-        btn.dataset.confirming = 'true';
-        btn.textContent = '✓ Точно?';
-        btn.style.color = 'var(--danger)';
-        setTimeout(() => {
-          if (btn.dataset.confirming === 'true') {
-            btn.dataset.confirming = 'false';
-            btn.textContent = '🗑';
-            btn.style.color = '';
-          }
-        }, 3000);
-      }
-    };
-    main.appendChild(el);
+      <button id="historyFilterClear" class="history-delete-btn" style="font-size:13px;">✕ Сбросить</button>
+    </div>
+    <div id="historyList"></div>
+  `;
+
+  const listEl = document.getElementById('historyList');
+  const filterInput = document.getElementById('historyDateFilter');
+
+  async function renderList(filterDate) {
+    listEl.innerHTML = '';
+    let visibleDates = dates;
+    if (filterDate) visibleDates = dates.filter(d => d === filterDate);
+
+    if (visibleDates.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">Нет записей на эту дату</div>';
+      return;
+    }
+
+    for (const dateStr of visibleDates) {
+      const entry = await loadEntry(dateStr);
+      if (!entry.saved) continue;
+
+      const el = document.createElement('div');
+      el.className = 'history-entry';
+      const template = PROGRAM[entry.dayKey];
+      const doneCount = entry.exercises.filter(ex => ex.done || ex.sets.length > 0).length;
+
+      let exHtml = '';
+      entry.exercises.forEach(ex => {
+        if (ex.sets.length === 0 && !ex.done) return;
+        const setsStr = ex.sets.filter(s => s.weight || s.reps)
+          .map(s => `${s.weight || '-'}кг×${s.reps || '-'}`).join(', ');
+        exHtml += `<div class="history-ex"><span class="ename">${ex.done ? '✓ ' : ''}${ex.name}:</span> ${setsStr || '—'}</div>`;
+      });
+      const detailsHtml = `${exHtml}${entry.chinTucks ? '<div class="history-ex" style="color:var(--accent2);">Chin tucks ✓</div>' : ''}`;
+
+      el.innerHTML = `
+        <div class="history-summary" style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;">
+          <div>
+            <div class="history-date">${formatDateHuman(dateStr)}</div>
+            <div class="history-day">${template.type} · ${doneCount} упр.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="history-expand-icon" style="color:var(--text-dim);font-size:13px;">▾</span>
+            <button class="history-delete-btn" data-date="${dateStr}">🗑</button>
+          </div>
+        </div>
+        <div class="history-details" style="display:none;margin-top:10px;">${detailsHtml}</div>
+      `;
+
+      const summary = el.querySelector('.history-summary');
+      const details = el.querySelector('.history-details');
+      const icon = el.querySelector('.history-expand-icon');
+      summary.addEventListener('click', (ev) => {
+        if (ev.target.closest('.history-delete-btn')) return;
+        const isOpen = details.style.display !== 'none';
+        details.style.display = isOpen ? 'none' : 'block';
+        icon.textContent = isOpen ? '▾' : '▴';
+      });
+
+      el.querySelector('.history-delete-btn').onclick = async (ev) => {
+        ev.stopPropagation();
+        const btn = ev.currentTarget;
+        if (btn.dataset.confirming === 'true') {
+          delete allData.workouts[dateStr];
+          delete cache[dateStr];
+          saveLocalBackup();
+          schedulePush();
+          renderHistoryView();
+        } else {
+          btn.dataset.confirming = 'true';
+          btn.textContent = '✓ Точно?';
+          btn.style.color = 'var(--danger)';
+          setTimeout(() => {
+            if (btn.dataset.confirming === 'true') {
+              btn.dataset.confirming = 'false';
+              btn.textContent = '🗑';
+              btn.style.color = '';
+            }
+          }, 3000);
+        }
+      };
+      listEl.appendChild(el);
+    }
+
+    if (listEl.innerHTML === '') {
+      listEl.innerHTML = '<div class="empty-state">Пока нет записей.<br>Заполни тренировку — она появится здесь.</div>';
+    }
   }
 
-  if (main.innerHTML === '') {
-    main.innerHTML = '<div class="empty-state">Пока нет записей.<br>Заполни тренировку — она появится здесь.</div>';
-  }
+  filterInput.onchange = (e) => renderList(e.target.value);
+  document.getElementById('historyFilterClear').onclick = () => {
+    filterInput.value = '';
+    renderList(null);
+  };
+
+  await renderList(null);
 }
 
 async function renderWeightView() {
