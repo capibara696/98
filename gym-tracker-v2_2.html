@@ -318,6 +318,30 @@
   }
   .history-notes {
     margin-top: 4px;
+  }  .rest-timer-widget {
+    background: var(--card);
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .timer-widget-btn {
+    flex: 1;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 8px;
+    font-size: 13px;
+  }
+  .timer-widget-btn.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    font-weight: 600;
   }
 </style>
 </head>
@@ -331,7 +355,6 @@
   </div>
 </header>
 
-<div class="tabs" id="groupTabs"></div>
 <div class="tabs" id="dayTabs"></div>
 
 <main id="mainContent"></main>
@@ -354,118 +377,48 @@
 </footer>
 
 <script>
+const FULLBODY_EXERCISES = [
+  { name: "Жим лёжа", target: "2×6-10", muscle: "chest" },
+  { name: "Жим на скамье под наклоном", target: "1×6-10", muscle: "chest" },
+  { name: "Shoulder press", target: "2×6-10", muscle: "shoulders" },
+  { name: "Lateral raise", target: "2×8-12", muscle: "shoulders" },
+  { name: "Lat pulldown", target: "2×6-10", muscle: "back" },
+  { name: "T-bar row", target: "2×6-10", muscle: "back" },
+  { name: "Hammer curls", target: "1×6-10", muscle: "biceps" },
+  { name: "Preacher curls", target: "1×6-10", muscle: "biceps" },
+  { name: "Tricep push down", target: "2×6-10", muscle: "triceps" },
+  { name: "Reverse hyperextension", target: "1×10-15", muscle: "lowerback" },
+  { name: "Приседания в тренажёре", target: "1×6-10", muscle: "glutes" },
+  { name: "Leg extension", target: "1×6-10", muscle: "quads" },
+  { name: "Leg curl", target: "1×6-10", muscle: "hamstrings" },
+  { name: "Calf raise", target: "1×10-20", muscle: "calves" }
+];
+
 const PROGRAM = {
-  mon: {
-    label: "Понедельник",
-    type: "Зал — Push",
-    location: "gym",
-    note: "Грудь, дельты, трицепс",
-    exercises: [
-      { name: "Жим штанги лёжа", target: "4×6-8", muscle: "chest" },
-      { name: "Жим гантелей на наклонной", target: "3×8-10", muscle: "chest" },
-      { name: "Армейский жим стоя", target: "3×6-8", muscle: "shoulders" },
-      { name: "Махи гантелями/тренажёр в стороны", target: "3×12-15", muscle: "shoulders" },
-      { name: "Отжимания на брусьях", target: "3×8-12", muscle: "triceps" },
-      { name: "Разгибание рук на трицепс", target: "3×12-15", muscle: "triceps" }
-    ]
-  },
-  tue: {
-    label: "Вторник",
-    type: "Дома — Кор + лёгкая нагрузка",
-    location: "home",
-    note: "Кор, задняя цепь, шея, осанка",
-    exercises: [
-      { name: "Dead bug", target: "3×10/сторона", muscle: "abs" },
-      { name: "Планка с pelvic tilt", target: "3×30-40 сек", muscle: "abs" },
-      { name: "Велосипед на пресс", target: "3×20", muscle: "abs" },
-      { name: "Ягодичный мостик", target: "2×15-20", muscle: "glutes" }
-    ]
-  },
-  wed: {
-    label: "Среда",
-    type: "Зал — Pull",
-    location: "gym",
-    note: "Спина, бицепс",
-    exercises: [
-      { name: "Подтягивания широким хватом", target: "4×6-10", muscle: "back" },
-      { name: "Тяга горизонтального блока", target: "3×8-10", muscle: "back" },
-      { name: "Тяга Т-грифа", target: "3×8-10", muscle: "back" },
-      { name: "Тяга к лицу (face pull)", target: "3×15", muscle: "shoulders" },
-      { name: "Подъём штанги на бицепс", target: "3×8-10", muscle: "biceps" },
-      { name: "Молотки с гантелями", target: "3×10-12", muscle: "biceps" },
-      { name: "Preacher curls (скамья Скотта)", target: "3×10-12", muscle: "biceps" }
-    ]
-  },
-  thu: {
-    label: "Четверг",
-    type: "Дома — Push",
-    location: "home",
-    note: "Грудь/дельты/трицепс bodyweight, шея",
-    exercises: [
-      { name: "Отжимания широким хватом", target: "4×max", muscle: "chest" },
-      { name: "Отжимания ноги на возвышении", target: "3×max", muscle: "chest" },
-      { name: "Пайк-отжимания", target: "3×8-12", muscle: "shoulders" },
-      { name: "Разведение рук лёжа с утяжелением", target: "3×15", muscle: "chest" },
-      { name: "Отжимания узким хватом", target: "3×max", muscle: "triceps" },
-      { name: "Подъём ног лёжа", target: "3×15-20", muscle: "abs" }
-    ]
-  },
-  fri: {
-    label: "Пятница",
-    type: "Зал — Legs",
-    location: "gym",
-    note: "Ноги, пресс, кардио",
-    exercises: [
-      { name: "Hack squat", target: "4×8-12", muscle: "quads" },
-      { name: "Reverse hyperextension", target: "3×10-15", muscle: "glutes" },
-      { name: "Жим ногами / выпады", target: "3×10-12", muscle: "quads" },
-      { name: "Cable lateral raises", target: "3×12-15", muscle: "shoulders" },
-      { name: "Подъём на носки стоя", target: "3×15-20", muscle: "calves" },
-      { name: "Пресс (подъём ног в висе)", target: "3 подхода", muscle: "abs" }
-    ]
-  },
-  sat: {
-    label: "Суббота",
-    type: "Дома — Pull-акцент",
-    location: "home",
-    note: "Спина/трапеция bodyweight, шея",
-    exercises: [
-      { name: "Супермены", target: "3×15", muscle: "lowerback" },
-      { name: "Prone Y-T-W raises", target: "3×10 на форму", muscle: "shoulders" },
-      { name: "Prone row (лёжа на животе, с утяжелением)", target: "3×12-15", muscle: "back" },
-      { name: "Обратные снежные ангелы", target: "3×15", muscle: "shoulders" },
-      { name: "Скручивания на пресс", target: "3×15-20", muscle: "abs" }
-    ]
-  },
-  sun: {
-    label: "Воскресенье",
-    type: "Отдых",
-    location: "home",
-    note: "Опционально растяжка",
-    exercises: [
-      { name: "Лёгкая растяжка", target: "10 мин", muscle: "other" }
-    ]
-  }
+  mon: { label: "Понедельник", type: "Зал — Fullbody", location: "gym", note: "Грудь, плечи, спина, руки, ноги", exercises: FULLBODY_EXERCISES },
+  tue: { label: "Вторник", type: "Отдых", location: "rest", note: "Chin tucks + Neck curls", exercises: [] },
+  wed: { label: "Среда", type: "Зал — Fullbody", location: "gym", note: "Грудь, плечи, спина, руки, ноги", exercises: FULLBODY_EXERCISES },
+  thu: { label: "Четверг", type: "Отдых", location: "rest", note: "Chin tucks + Neck curls", exercises: [] },
+  fri: { label: "Пятница", type: "Зал — Fullbody", location: "gym", note: "Грудь, плечи, спина, руки, ноги", exercises: FULLBODY_EXERCISES },
+  sat: { label: "Суббота", type: "Отдых", location: "rest", note: "Chin tucks + Neck curls", exercises: [] },
+  sun: { label: "Воскресенье", type: "Отдых", location: "rest", note: "Chin tucks + Neck curls", exercises: [] }
 };
 
 const MUSCLE_LABELS = {
   chest: "Грудь", shoulders: "Плечи (дельты)", triceps: "Трицепс", back: "Спина",
-  biceps: "Бицепс", abs: "Пресс/кор", quads: "Квадрицепс", glutes: "Ягодицы",
-  calves: "Икры", lowerback: "Низ спины", neck: "Шея", other: "—"
+  biceps: "Бицепс", abs: "Пресс/кор", quads: "Квадрицепс", hamstrings: "Задняя пов. бедра",
+  glutes: "Ягодицы", calves: "Икры", lowerback: "Низ спины", neck: "Шея", other: "—"
 };
 const PRIORITY_MUSCLES = ["chest","shoulders","back","biceps","triceps"];
 const MIN_OPTIMAL_SETS = 12;
 const LOWER_BOUND_SETS = 8;
 
 const DAY_KEYS = ["mon","tue","wed","thu","fri","sat","sun"];
-const GYM_DAYS = DAY_KEYS.filter(k => PROGRAM[k].location === "gym");
-const HOME_DAYS = DAY_KEYS.filter(k => PROGRAM[k].location === "home");
 const DAY_ORDER_JS = [1,2,3,4,5,6,0]; // JS getDay() mapping: mon=1...sun=0
 
 let currentView = "workout";
 let currentDate = new Date().toISOString().slice(0,10);
 let currentDayKey = getDayKeyFromDate(currentDate);
-let currentGroup = PROGRAM[currentDayKey].location; // "gym" or "home"
 let cache = {}; // in-memory cache of loaded workout entries by date
 
 function getDayKeyFromDate(dateStr) {
@@ -587,6 +540,7 @@ async function loadEntry(dateStr) {
     dayKey: dayKey,
     saved: false,
     chinTucks: false,
+    neckCurls: false,
     exercises: template.exercises.map(ex => ({
       name: ex.name,
       target: ex.target,
@@ -637,31 +591,90 @@ function getLastSetForExercise(exerciseName, excludeDate) {
   return null;
 }
 
-const restTimers = {};
-function startRestTimer(exIdx, btn, seconds) {
-  if (restTimers[exIdx]) {
-    clearInterval(restTimers[exIdx].interval);
-  }
-  let remaining = seconds;
-  btn.classList.add('running');
-  btn.textContent = `⏱ ${remaining} сек`;
-  const interval = setInterval(() => {
-    remaining -= 1;
-    if (remaining <= 0) {
-      clearInterval(interval);
-      delete restTimers[exIdx];
-      btn.classList.remove('running');
-      btn.textContent = '✓ Отдых окончен!';
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-      setTimeout(() => {
-        btn.textContent = '⏱ Таймер отдыха (90 сек)';
-      }, 2500);
-      return;
-    }
-    btn.textContent = `⏱ ${remaining} сек`;
-  }, 1000);
-  restTimers[exIdx] = { interval };
+// ---------- PERSISTENT REST TIMER (3 min, survives backgrounding) ----------
+const REST_DURATION = 180; // seconds
+let timerTickInterval = null;
+
+function loadTimerState() {
+  try {
+    const raw = localStorage.getItem('restTimerState');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { endTime: null, remaining: REST_DURATION, running: false };
 }
+function saveTimerState(state) {
+  try { localStorage.setItem('restTimerState', JSON.stringify(state)); } catch (e) {}
+}
+
+function getTimerRemaining(state) {
+  if (state.running && state.endTime) {
+    const remaining = Math.max(0, Math.round((state.endTime - Date.now()) / 1000));
+    return remaining;
+  }
+  return state.remaining;
+}
+
+function startTimer() {
+  const state = loadTimerState();
+  const base = (state.remaining && state.remaining > 0 && state.remaining < REST_DURATION) ? state.remaining : REST_DURATION;
+  const newState = { endTime: Date.now() + base * 1000, remaining: base, running: true };
+  saveTimerState(newState);
+  renderTimerWidget();
+}
+function pauseTimer() {
+  const state = loadTimerState();
+  const remaining = getTimerRemaining(state);
+  saveTimerState({ endTime: null, remaining, running: false });
+  renderTimerWidget();
+}
+function resetTimer() {
+  saveTimerState({ endTime: null, remaining: REST_DURATION, running: false });
+  renderTimerWidget();
+}
+
+function renderTimerWidget() {
+  const wrap = document.getElementById('restTimerWidget');
+  if (!wrap) return;
+  const state = loadTimerState();
+  const remaining = getTimerRemaining(state);
+
+  if (remaining <= 0 && state.running) {
+    saveTimerState({ endTime: null, remaining: 0, running: false });
+    if (navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 250]);
+  }
+
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  const timeStr = `${mins}:${secs.toString().padStart(2,'0')}`;
+  const isFinished = remaining <= 0;
+  const isRunning = state.running && !isFinished;
+
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:${isFinished ? 'var(--accent2)' : 'var(--text)'};min-width:56px;">${isFinished ? '✓ 0:00' : timeStr}</div>
+      <div style="display:flex;gap:6px;flex:1;">
+        ${!isRunning ? `<button id="timerStartBtn" class="timer-widget-btn primary">▶ ${remaining < REST_DURATION && remaining > 0 ? 'Продолжить' : 'Старт (3:00)'}</button>` : `<button id="timerPauseBtn" class="timer-widget-btn">⏸ Пауза</button>`}
+        <button id="timerResetBtn" class="timer-widget-btn">↺ Сброс</button>
+      </div>
+    </div>
+  `;
+  const startBtn = document.getElementById('timerStartBtn');
+  if (startBtn) startBtn.onclick = startTimer;
+  const pauseBtn = document.getElementById('timerPauseBtn');
+  if (pauseBtn) pauseBtn.onclick = pauseTimer;
+  document.getElementById('timerResetBtn').onclick = resetTimer;
+}
+
+function ensureTimerTicking() {
+  if (timerTickInterval) return;
+  timerTickInterval = setInterval(() => {
+    if (document.getElementById('restTimerWidget')) renderTimerWidget();
+  }, 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) renderTimerWidget();
+});
 
 async function renderWorkoutView() {
   const main = document.getElementById('mainContent');
@@ -669,7 +682,12 @@ async function renderWorkoutView() {
   document.getElementById('pageTitle').textContent = template.type;
   const entry = await loadEntry(currentDate);
 
-  main.innerHTML = `<div class="day-note">${template.note}</div>`;
+  main.innerHTML = `
+    <div class="day-note">${template.note}</div>
+    <div id="restTimerWidget" class="rest-timer-widget"></div>
+  `;
+  renderTimerWidget();
+  ensureTimerTicking();
 
   entry.exercises.forEach((ex, exIdx) => {
     const meta = template.exercises[exIdx];
@@ -727,9 +745,11 @@ async function renderWorkoutView() {
 
     const timerBtn = document.createElement('button');
     timerBtn.className = 'timer-btn';
-    timerBtn.id = `timer-btn-${exIdx}`;
-    timerBtn.textContent = '⏱ Таймер отдыха (90 сек)';
-    timerBtn.onclick = () => startRestTimer(exIdx, timerBtn, 90);
+    timerBtn.textContent = '⏱ Начать отдых (3:00)';
+    timerBtn.onclick = () => {
+      startTimer();
+      document.getElementById('restTimerWidget')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
     card.appendChild(timerBtn);
 
     const notesWrap = document.createElement('div');
@@ -753,21 +773,33 @@ async function renderWorkoutView() {
     };
   });
 
-  // Chin tucks — everyday item
+  // Chin tucks + Neck curls — everyday items
   const chinDiv = document.createElement('div');
   chinDiv.className = 'exercise-card';
   chinDiv.innerHTML = `
-    <div class="exercise-head">
+    <div class="exercise-head" style="margin-bottom:10px;">
       <div>
         <div class="exercise-name">Chin tucks</div>
-        <div class="exercise-target">Цель: 3×10</div>
+        <div class="exercise-target">Цель: 3×20</div>
       </div>
       <button class="check-btn ${entry.chinTucks ? 'done' : ''}" id="chinTucksBtn">${entry.chinTucks ? '✓' : ''}</button>
+    </div>
+    <div class="exercise-head">
+      <div>
+        <div class="exercise-name">Neck curls</div>
+        <div class="exercise-target">Цель: 3×20</div>
+      </div>
+      <button class="check-btn ${entry.neckCurls ? 'done' : ''}" id="neckCurlsBtn">${entry.neckCurls ? '✓' : ''}</button>
     </div>
   `;
   main.appendChild(chinDiv);
   chinDiv.querySelector('#chinTucksBtn').onclick = () => {
     entry.chinTucks = !entry.chinTucks;
+    debouncedSave(currentDate);
+    renderWorkoutView();
+  };
+  chinDiv.querySelector('#neckCurlsBtn').onclick = () => {
+    entry.neckCurls = !entry.neckCurls;
     debouncedSave(currentDate);
     renderWorkoutView();
   };
@@ -878,7 +910,7 @@ async function renderHistoryView() {
           </div>
         `;
       });
-      const detailsHtml = `${exHtml}${entry.chinTucks ? '<div class="history-ex" style="color:var(--accent2);">Chin tucks ✓</div>' : ''}`;
+      const detailsHtml = `${exHtml}${entry.chinTucks ? '<div class="history-ex" style="color:var(--accent2);">Chin tucks ✓</div>' : ''}${entry.neckCurls ? '<div class="history-ex" style="color:var(--accent2);">Neck curls ✓</div>' : ''}`;
 
       el.innerHTML = `
         <div class="history-summary" style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;">
@@ -1029,6 +1061,7 @@ const BODY_ZONES = {
   back:      { cx: 100, cy: 95,  rx: 26, ry: 18 },
   abs:       { cx: 100, cy: 135, rx: 18, ry: 22 },
   quads:     { cx: 100, cy: 210, rx: 22, ry: 35 },
+  hamstrings:{ cx: 100, cy: 245, rx: 20, ry: 16 },
   glutes:    { cx: 100, cy: 175, rx: 22, ry: 14 },
   calves:    { cx: 100, cy: 275, rx: 14, ry: 24 },
   lowerback: { cx: 100, cy: 160, rx: 20, ry: 12 }
@@ -1185,7 +1218,7 @@ async function renderAnalyticsView() {
       recs.push(`<b>${MUSCLE_LABELS[m]}</b> — ${sets} подх/нед, на нижней границе. Можно добавить 1 подход для более уверенного роста.`);
     }
   });
-  ['quads','glutes','calves','lowerback'].forEach(m => {
+  ['quads','hamstrings','glutes','calves','lowerback'].forEach(m => {
     const sets = totals[m] || 0;
     if (sets < LOWER_BOUND_SETS) {
       recs.push(`<span style="color:var(--text-dim);">${MUSCLE_LABELS[m]} — ${sets} подх/нед, ниже нормы, но это не приоритет сейчас, можно оставить как есть.</span>`);
@@ -1294,35 +1327,10 @@ async function renderAnalyticsView() {
   await updateChart();
 }
 
-function renderGroupTabs() {
-  const groupDiv = document.getElementById('groupTabs');
-  groupDiv.innerHTML = '';
-  const groups = [
-    { key: 'gym', label: '🏋️ Зал' },
-    { key: 'home', label: '🏠 Дом' }
-  ];
-  groups.forEach(g => {
-    const tab = document.createElement('div');
-    tab.className = 'tab' + (g.key === currentGroup ? ' active' : '');
-    tab.textContent = g.label;
-    tab.onclick = () => {
-      currentGroup = g.key;
-      const dayList = g.key === 'gym' ? GYM_DAYS : HOME_DAYS;
-      if (!dayList.includes(currentDayKey)) {
-        currentDayKey = dayList[0];
-        syncDateToDay();
-      }
-      render();
-    };
-    groupDiv.appendChild(tab);
-  });
-}
-
 function renderDayTabs() {
   const tabsDiv = document.getElementById('dayTabs');
   tabsDiv.innerHTML = '';
-  const dayList = currentGroup === 'gym' ? GYM_DAYS : HOME_DAYS;
-  dayList.forEach(key => {
+  DAY_KEYS.forEach(key => {
     const tab = document.createElement('div');
     tab.className = 'tab' + (key === currentDayKey ? ' active' : '');
     tab.textContent = PROGRAM[key].label.slice(0,3);
@@ -1348,13 +1356,11 @@ function syncDateToDay() {
 }
 
 async function render() {
-  renderGroupTabs();
   renderDayTabs();
   document.querySelectorAll('.nav-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.view === currentView);
   });
   document.getElementById('dateRow').style.display = (currentView === 'history' || currentView === 'analytics') ? 'none' : 'flex';
-  document.getElementById('groupTabs').style.display = currentView === 'workout' ? 'flex' : 'none';
   document.getElementById('dayTabs').style.display = currentView === 'workout' ? 'flex' : 'none';
 
   if (currentView === 'workout') await renderWorkoutView();
@@ -1367,7 +1373,6 @@ document.getElementById('dateInput').value = currentDate;
 document.getElementById('dateInput').onchange = (e) => {
   currentDate = e.target.value;
   currentDayKey = getDayKeyFromDate(currentDate);
-  currentGroup = PROGRAM[currentDayKey].location;
   render();
 };
 
